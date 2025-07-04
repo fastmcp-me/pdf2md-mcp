@@ -45,7 +45,7 @@ Converts a PDF file to Markdown format using AI sampling.
 
 ## Requirements
 
-- Python 3.8+
+- Python 3.10+
 - An MCP-compatible client with AI sampling capabilities
 - Network access for URL-based PDF files
 
