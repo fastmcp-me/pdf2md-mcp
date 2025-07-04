@@ -231,38 +231,5 @@ async def convert_pdf_to_markdown(
             "pages_processed": 0
         }
 
-
-def main():
-    """Main entry point for the MCP server."""
-    import sys
-    
-    if len(sys.argv) > 1:
-        if sys.argv[1] in ['--help', '-h']:
-            print("PDF2MD MCP Server")
-            print("Usage: pdf2md-mcp [--help]")
-            print("Starts the MCP server for PDF to Markdown conversion.")
-            return
-        elif sys.argv[1] in ['--version', '-v']:
-            from . import __version__
-            print(f"PDF2MD MCP Server v{__version__}")
-            return
-    
-    print("Starting PDF2MD MCP Server...")
-    print("Server is ready to accept MCP requests for PDF to Markdown conversion.")
-    
-    # In a real FastMCP application, this would start the server
-    # For now, this is a placeholder
-    try:
-        # This would be replaced with actual FastMCP server startup
-        print("MCP Server running... (Press Ctrl+C to stop)")
-        asyncio.get_event_loop().run_forever()
-    except KeyboardInterrupt:
-        print("\nShutting down PDF2MD MCP Server...")
-
-
-# Export the FastMCP app
-app = mcp
-
-
 if __name__ == "__main__":
-    main()
+    mcp.run()
