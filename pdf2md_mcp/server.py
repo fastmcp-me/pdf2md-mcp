@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 
 import aiofiles
 import httpx
-from fastmcp import FastMCP
+from fastmcp import FastMCP, Context
 
 # Initialize the MCP server
 mcp = FastMCP("PDF2MD MCP Server")
@@ -107,6 +107,9 @@ Please process the PDF and return the extracted Markdown content."""
             return extracted_content, pages_processed
             
         except Exception as e:
+            # Log the error and return a fallback content
+            import traceback
+            traceback.print_exception(e)
             # Fallback if sampling fails
             fallback_content = f"""# PDF Content Extraction Error
 
@@ -143,22 +146,20 @@ Starting from page: {start_page}
 
 converter = PDFToMarkdownConverter()
 
-
-@mcp.tool()
+@mcp.tool
 async def convert_pdf_to_markdown(
     file_path: str,
+    ctx: Context,
     output_dir: Optional[str] = None,
-    ctx=None
 ) -> Dict[str, Any]:
     """
     Convert a PDF file to Markdown format using AI sampling.
     
     Args:
         file_path: Local file path or URL to the PDF file
+        ctx: MCP context for sampling (automatically provided by FastMCP)
         output_dir: Optional output directory. Defaults to same directory as input file
                    (for local files) or current working directory (for URLs)
-        ctx: MCP context for sampling (automatically provided by FastMCP)
-    
     Returns:
         Dictionary containing:
         - output_file: Path to the generated markdown file
@@ -231,5 +232,10 @@ async def convert_pdf_to_markdown(
             "pages_processed": 0
         }
 
+def main():
+    """Run the MCP server."""
+    mcp.run(transport="stdio")
+
+
 if __name__ == "__main__":
-    mcp.run()
+    main()
