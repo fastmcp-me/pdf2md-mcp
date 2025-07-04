@@ -98,7 +98,14 @@ Starting from page {start_page}, please:
 Please process the PDF and return the extracted Markdown content."""
 
             # Use FastMCP sampling to get LLM response
-            extracted_content = await ctx.sample(prompt)
+            response = await ctx.sample(prompt, model_preferences="gemini-2.5-pro")
+            
+            # Extract text content from response (handle both string and object responses)
+            if isinstance(response, str):
+                extracted_content = response
+            else:
+                # If response is an object, try to get the text content
+                extracted_content = getattr(response, 'text', None) or str(response)
             
             # Count the number of pages processed by looking for page markers
             page_matches = re.findall(r'(?:##\s*Page\s*(\d+)|<!--\s*Page\s*(\d+)\s*-->)', extracted_content, re.IGNORECASE)
