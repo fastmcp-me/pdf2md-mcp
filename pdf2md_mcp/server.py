@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 import aiofiles
 import httpx
 from fastmcp import FastMCP, Context
+import pymupdf4llm
 
 # Initialize the MCP server
 mcp = FastMCP("PDF2MD MCP Server")
@@ -74,81 +75,41 @@ class PDFToMarkdownConverter:
         except Exception:
             return 0
     
-    async def extract_pdf_content_with_sampling(self, pdf_path: str, start_page: int = 1, ctx=None) -> Tuple[str, int]:
+    async def extract_pdf_content(self, pdf_path: str, start_page: int = 1) -> Tuple[str, int]:
         """
-        Extract PDF content using MCP sampling feature.
-        Uses ctx.sample() to request completions from the client's LLM.
+        Extract PDF content using pymupdf4llm (Python package) instead of MCP sampling.
         """
-        if ctx is None:
-            # Fallback for testing or when no context is available
-            return await self._extract_fallback(pdf_path, start_page)
-        
         try:
-            # Sample the LLM to extract content from the PDF
-            prompt = f"""Please extract and convert the content from the PDF file: {pdf_path}
-            
-Starting from page {start_page}, please:
-1. Extract the text content from each page
-2. Convert it to clean Markdown format
-3. Use page markers like "<!-- Page X -->" and "## Page X" for each page
-4. Preserve the document structure (headings, lists, tables, etc.)
-5. Remove any OCR artifacts or formatting noise
-6. Return the content in a structured format
+            # Use pymupdf4llm to extract markdown from the PDF
+            # Note: pages are 0-indexed in pymupdf4llm
+            # If start_page > 1, extract only the remaining pages
+            import asyncio
+            loop = asyncio.get_event_loop()
+            def extract_md():
+                if start_page > 1:
+                    # Extract only the remaining pages
+                    total_pages = pymupdf4llm.get_page_count(pdf_path)
+                    pages = list(range(start_page - 1, total_pages))
+                    md = pymupdf4llm.to_markdown(pdf_path, pages=pages)
+                else:
+                    md = pymupdf4llm.to_markdown(pdf_path)
+                return md
+            extracted_content = await loop.run_in_executor(None, extract_md)
 
-Please process the PDF and return the extracted Markdown content."""
-
-            # Use FastMCP sampling to get LLM response
-            response = await ctx.sample(prompt, model_preferences="gemini-2.5-pro")
-            
-            # Extract text content from response (handle both string and object responses)
-            if isinstance(response, str):
-                extracted_content = response
-            else:
-                # If response is an object, try to get the text content
-                extracted_content = getattr(response, 'text', None) or str(response)
-            
             # Count the number of pages processed by looking for page markers
             page_matches = re.findall(r'(?:##\s*Page\s*(\d+)|<!--\s*Page\s*(\d+)\s*-->)', extracted_content, re.IGNORECASE)
-            pages_processed = len(set(int(match[0] or match[1]) for match in page_matches)) if page_matches else 1
-            
+            if page_matches:
+                pages_processed = len(set(int(match[0] or match[1]) for match in page_matches))
+            else:
+                # Fallback: count number of '## Page' headers or estimate from start_page
+                pages_processed = extracted_content.count('## Page') or 1
+
             return extracted_content, pages_processed
-            
         except Exception as e:
-            # Log the error and return a fallback content
             import traceback
             traceback.print_exception(e)
-            # Fallback if sampling fails
-            fallback_content = f"""# PDF Content Extraction Error
-
-Failed to extract content from: {pdf_path}
-Error: {str(e)}
-
-<!-- Page {start_page} -->
-## Page {start_page}
-
-*Content extraction failed. Please check the PDF file and try again.*
-
----
-*PDF2MD MCP Server - Extraction failed, using fallback*
-"""
+            fallback_content = f"""# PDF Content Extraction Error\n\nFailed to extract content from: {pdf_path}\nError: {str(e)}\n\n<!-- Page {start_page} -->\n## Page {start_page}\n\n*Content extraction failed. Please check the PDF file and try again.*\n\n---\n*PDF2MD MCP Server - Extraction failed, using fallback*\n"""
             return fallback_content, 1
-    
-    async def _extract_fallback(self, pdf_path: str, start_page: int = 1) -> Tuple[str, int]:
-        """Fallback method when no sampling context is available."""
-        content = f"""# PDF Content Extracted
-
-Content extracted from: {pdf_path}
-Starting from page: {start_page}
-
-<!-- Page {start_page} -->
-## Page {start_page}
-
-*This is a fallback implementation. For full extraction, use with MCP sampling context.*
-
----
-*Extracted using PDF2MD MCP Server (fallback mode)*
-"""
-        return content, 1
 
 
 converter = PDFToMarkdownConverter()
@@ -156,7 +117,6 @@ converter = PDFToMarkdownConverter()
 @mcp.tool
 async def convert_pdf_to_markdown(
     file_path: str,
-    ctx: Context,
     output_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
@@ -164,7 +124,6 @@ async def convert_pdf_to_markdown(
     
     Args:
         file_path: Local file path or URL to the PDF file
-        ctx: MCP context for sampling (automatically provided by FastMCP)
         output_dir: Optional output directory. Defaults to same directory as input file
                    (for local files) or current working directory (for URLs)
     Returns:
@@ -202,23 +161,22 @@ async def convert_pdf_to_markdown(
         last_page = await converter.check_existing_content(output_path)
         start_page = last_page + 1 if last_page > 0 else 1
         
-        # Extract content using MCP sampling
-        new_content, pages_processed = await converter.extract_pdf_content_with_sampling(
-            local_pdf_path, start_page, ctx
+        # Extract content using pymupdf4llm
+        extracted_content, pages_processed = await converter.extract_pdf_content(
+            local_pdf_path, start_page
         )
         
         # Write or append content
         mode = 'a' if last_page > 0 else 'w'
         async with aiofiles.open(output_path, mode, encoding='utf-8') as f:
             if last_page > 0:
-                await f.write('\n\n' + new_content)
+                await f.write('\n\n' + extracted_content)
             else:
-                await f.write(new_content)
+                await f.write(extracted_content)
         
         # Generate summary
         action = "Continued" if last_page > 0 else "Started"
-        sampling_status = "with AI sampling" if ctx else "in fallback mode"
-        summary = f"{action} PDF conversion from {source_description} {sampling_status}. " \
+        summary = f"{action} PDF conversion from {source_description}. " \
                  f"Processed {pages_processed} pages starting from page {start_page}. " \
                  f"Output saved to: {output_path}"
         
@@ -228,7 +186,6 @@ async def convert_pdf_to_markdown(
             "pages_processed": pages_processed,
             "start_page": start_page,
             "source": source_description,
-            "sampling_used": ctx is not None
         }
         
     except Exception as e:
