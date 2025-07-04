@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "pdf2md": {
+      "command": "pdf2md-mcp",
+      "args": [],
+      "env": {},
+      "description": "PDF to Markdown conversion using AI sampling"
+    }
+  }
+}
