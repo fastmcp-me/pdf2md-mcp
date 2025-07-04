@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pdf2md-mcp"
-version = "0.1.0"
+version = "0.1.1"
 description = "MCP server for converting PDF files to Markdown using AI sampling"
 authors = [
     {name = "Gavin Huang", email = "shuminghuang@gmail.com"}
